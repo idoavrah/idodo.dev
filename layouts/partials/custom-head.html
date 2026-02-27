@@ -2,5 +2,27 @@
   .author-bio {
     white-space: pre-line;
     max-width: 700px !important;
-}
+  }
+  .author .author-avatar {
+    width: 140px;
+    height: 140px;
+  }
 </style>
+
+<style>
+  .medium-zoom-image {
+    background-color: transparent !important;
+  }
+  .medium-zoom-image--opened {
+    background-color: black !important;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/medium-zoom@1.1.0/dist/medium-zoom.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    mediumZoom('.page-content img', {
+      margin: 24,
+      background: 'rgba(0, 0, 0, 0.8)'
+    });
+  });
+</script>

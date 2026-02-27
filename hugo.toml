@@ -17,7 +17,7 @@ enableEmoji = true
   intro = "Hi, I'm Ido Avraham"
   name = "Ido Avraham"
   description = """
-    Cloud & DevOps Engineer who loves building things that (mostly) don't break. I ship code from ideation to production — everything here is battle-tested by me, though the actual words were most-likely written by some language model. I live for the curiosity of how things really work and the obsession with making them better.
+    Cloud & DevOps Engineer who loves building things that (mostly) don't break. I ship code from ideation to production — everything here is battle-tested by me, though the actual words were most-likely written by some large language model. I live for the curiosity of how things really work and the obsession with making them better.
   """
 
 [[params.socialIcons]]
