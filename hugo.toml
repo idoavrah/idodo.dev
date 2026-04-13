@@ -11,6 +11,7 @@ enableEmoji = true
 [params]
   description = "A blog about engineering, automation, and slashing cloud bills."
   mainSections = ['posts']
+  dateFormat = "02/01/2006"
 
 [params.author]
   avatar = "avatar.png"

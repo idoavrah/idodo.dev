@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWS Streaming Cost Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+[data-theme="dark"] {
+  --bg:           #0a0c0f;
+  --surface:      #111318;
+  --surface2:     #181c24;
+  --surface3:     #1e2330;
+  --border:       rgba(255,255,255,0.07);
+  --border2:      rgba(255,255,255,0.13);
+  --text:         #e8eaf0;
+  --muted:        #5c6478;
+  --muted2:       #8890a4;
+  --grid-line:    rgba(255,255,255,0.025);
+  --thumb-border: #0a0c0f;
+  --track-empty:  #1e2330;
+}
+[data-theme="light"] {
+  --bg:           #f2f3f6;
+  --surface:      #ffffff;
+  --surface2:     #eef0f4;
+  --surface3:     #e2e4ec;
+  --border:       rgba(0,0,0,0.08);
+  --border2:      rgba(0,0,0,0.14);
+  --text:         #111318;
+  --muted:        #8a90a2;
+  --muted2:       #5c6478;
+  --grid-line:    rgba(0,0,0,0.04);
+  --thumb-border: #f2f3f6;
+  --track-empty:  #d4d6e0;
+}
+
+:root {
+  --c-live:  #e05454;
+  --c-near:  #f0a500;
+  --c-vod:   #7c6af7;
+  --c-teal:  #00d4aa;
+  --c-green: #3ecf8e;
+  --mono: 'DM Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background 0.2s, color 0.2s;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+
+.wrapper {
+  position: relative; z-index: 1;
+  max-width: 1240px; margin: 0 auto;
+  padding: 36px 28px 80px;
+}
+
+/* Header */
+header {
+  display: flex; align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 32px; padding-bottom: 20px;
+  border-bottom: 1px solid var(--border); gap: 16px;
+}
+.eyebrow {
+  font-family: var(--mono); font-size: 11px;
+  letter-spacing: 0.15em; color: var(--muted);
+  text-transform: uppercase; margin-bottom: 6px;
+}
+h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: var(--text); line-height: 1; }
+h1 .acc { color: var(--c-teal); }
+.hdr-right { display: flex; align-items: center; gap: 12px; }
+.hdr-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; line-height: 1.6; }
+
+.theme-btn {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px; color: var(--muted2);
+  cursor: pointer; padding: 6px 11px;
+  border: 1px solid var(--border2); border-radius: 8px;
+  background: var(--surface); transition: background 0.15s;
+  white-space: nowrap;
+}
+.theme-btn:hover { background: var(--surface2); }
+
+/* Mode tabs */
+.mode-row {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 24px; flex-wrap: wrap;
+}
+.mode-toggle {
+  display: flex; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; padding: 4px;
+}
+.mode-btn {
+  font-family: var(--sans); font-size: 13px; font-weight: 600;
+  padding: 7px 16px; border: none; border-radius: 7px;
+  cursor: pointer; transition: all 0.18s;
+  background: transparent; color: var(--muted2);
+  white-space: nowrap;
+}
+.mode-btn:hover:not(.active) { color: var(--text); background: var(--surface2); }
+.mode-btn.active[data-mode="live"]  { background: rgba(224,84,84,0.18);   color: var(--c-live); }
+.mode-btn.active[data-mode="near"]  { background: rgba(240,165,0,0.18);   color: var(--c-near); }
+.mode-btn.active[data-mode="vod"]   { background: rgba(124,106,247,0.18); color: var(--c-vod);  }
+.mode-tag {
+  font-family: var(--mono); font-size: 10px; opacity: 0.55; margin-left: 3px;
+}
+.mode-desc {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  padding: 6px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface2);
+  line-height: 1.5; flex: 1; min-width: 200px;
+}
+
+/* Main grid */
+.main-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 18px; align-items: start;
+}
+
+/* Panel */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.ph { padding: 13px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.ph-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; transition: background 0.2s, box-shadow 0.2s; }
+.ph-title { font-size: 11px; font-family: var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted2); }
+
+/* Inputs */
+.inputs-body { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+
+.section-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+
+.input-group { display: flex; flex-direction: column; gap: 7px; }
+.input-label { display: flex; justify-content: space-between; align-items: baseline; }
+.input-name  { font-size: 12px; color: var(--muted2); font-family: var(--mono); }
+.input-val   { font-size: 13px; font-weight: 600; font-family: var(--mono); color: var(--text); }
+
+input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 3px; border-radius: 2px; outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; border: 2px solid var(--thumb-border); cursor: pointer;
+}
+.r-teal { background: linear-gradient(to right, var(--c-teal) var(--pct,50%), var(--track-empty) var(--pct,50%)); }
+.r-teal::-webkit-slider-thumb { background: var(--c-teal); }
+.r-live { background: linear-gradient(to right, var(--c-live) var(--pct,50%), var(--track-empty) var(--pct,50%)); }
+.r-live::-webkit-slider-thumb { background: var(--c-live); }
+.r-near { background: linear-gradient(to right, var(--c-near) var(--pct,50%), var(--track-empty) var(--pct,50%)); }
+.r-near::-webkit-slider-thumb { background: var(--c-near); }
+.r-vod  { background: linear-gradient(to right, var(--c-vod)  var(--pct,50%), var(--track-empty) var(--pct,50%)); }
+.r-vod::-webkit-slider-thumb  { background: var(--c-vod);  }
+.r-split {
+  background: linear-gradient(to right,
+    var(--c-live)  0%, var(--c-live)  var(--live-pct, 25%),
+    var(--c-vod)   var(--live-pct, 25%), var(--c-vod) 100%);
+}
+.r-split::-webkit-slider-thumb { background: var(--text); border: 2px solid var(--thumb-border); }
+
+/* Split indicator */
+.split-bar {
+  height: 6px; border-radius: 3px; overflow: hidden;
+  display: flex; margin-top: 4px;
+}
+.split-live { height: 100%; transition: width 0.3s; }
+.split-vod  { height: 100%; flex: 1; }
+
+/* Right col */
+.right-col { display: flex; flex-direction: column; gap: 14px; }
+
+/* Total */
+.total-panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 20px 24px; display: grid; grid-template-columns: 1fr auto;
+  align-items: center; gap: 16px;
+}
+.total-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.total-amount { font-size: 46px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; color: var(--c-teal); }
+.total-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 5px; }
+.total-right { text-align: right; }
+.cpvh-label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 3px; }
+.cpvh-val   { font-family: var(--mono); font-size: 19px; font-weight: 500; color: var(--text); }
+.cache-pill {
+  display: inline-flex; align-items: center;
+  margin-top: 7px; padding: 3px 9px; border-radius: 20px;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+}
+
+/* Stats */
+.stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 13px 15px; }
+.stat-lbl  { font-family: var(--mono); font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+.stat-val  { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); line-height: 1; }
+.stat-unit { font-family: var(--mono); font-size: 10px; color: var(--muted2); margin-top: 3px; }
+
+/* Detail strip */
+.detail-strip {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 13px 18px; display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
+}
+.ds-lbl { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 3px; }
+.ds-val { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--text); }
+
+/* Breakdown */
+.breakdown-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.brow {
+  display: grid; grid-template-columns: 8px 1fr auto;
+  align-items: center; gap: 11px; padding: 10px 18px;
+  transition: background 0.12s;
+}
+.brow:hover { background: var(--surface2); }
+.brow + .brow { border-top: 1px solid var(--border); }
+.brow.sub-row { background: var(--surface2); padding-left: 36px; }
+.brow.sub-row:hover { background: var(--surface3); }
+.brow.sub-row .brow-name { font-size: 12px; color: var(--muted2); }
+.brow-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+.brow-name-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.brow-name { font-size: 13px; color: var(--text); }
+.brow-note { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.brow-bar-wrap { height: 3px; border-radius: 2px; background: var(--surface3); overflow: hidden; }
+.brow-bar { height: 100%; border-radius: 2px; transition: width 0.4s cubic-bezier(.4,0,.2,1); }
+.brow-amt-col { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.brow-amt { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; }
+.brow-pct { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.brow-section {
+  padding: 7px 18px 4px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+.brow-section:first-child { border-top: none; }
+.breakdown-footer {
+  border-top: 1px solid var(--border2); padding: 12px 18px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.bf-label { font-family: var(--mono); font-size: 11px; color: var(--muted2); }
+.bf-total { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--text); }
+
+/* Responsive */
+@media (max-width: 940px) {
+  .main-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2,1fr); }
+  .total-panel { grid-template-columns: 1fr; }
+  .total-right { text-align: left; }
+  .detail-strip { grid-template-columns: repeat(2,1fr); }
+}
+@media (max-width: 560px) {
+  .wrapper { padding: 20px 14px 60px; }
+  h1 { font-size: 20px; }
+  .total-amount { font-size: 34px; }
+  .mode-btn { padding: 6px 11px; font-size: 12px; }
+}
+
+@keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.panel,.total-panel,.stat-card,.breakdown-panel,.detail-strip { animation: fadeUp 0.3s ease both; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div>
+      <div class="eyebrow">AWS Infrastructure</div>
+      <h1>Streaming Cost <span class="acc">Calculator</span></h1>
+    </div>
+    <div class="hdr-right">
+      <div class="hdr-meta">
+        <div>Monthly estimate</div>
+        <div style="color:var(--muted)">AWS public list rates</div>
+      </div>
+      <button class="theme-btn" onclick="toggleTheme()">
+        <span id="theme-icon">☀</span><span id="theme-label">Light</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mode selector + description -->
+  <div class="mode-row">
+    <div class="mode-toggle">
+      <button class="mode-btn active" data-mode="live" onclick="setMode('live')">
+        True Live<span class="mode-tag">~2s</span>
+      </button>
+      <button class="mode-btn" data-mode="near" onclick="setMode('near')">
+        Near-Realtime<span class="mode-tag">~5 min</span>
+      </button>
+      <button class="mode-btn" data-mode="vod" onclick="setMode('vod')">
+        VOD only
+      </button>
+    </div>
+    <div class="mode-desc" id="mode-desc"></div>
+  </div>
+
+  <div class="main-grid">
+
+    <!-- LEFT: Inputs -->
+    <div class="panel">
+      <div class="ph">
+        <div class="ph-dot" id="panel-dot"></div>
+        <div class="ph-title">Monthly Parameters</div>
+      </div>
+      <div class="inputs-body">
+
+        <!-- Production -->
+        <div class="section-label">Production (always-on)</div>
+
+        <div class="input-group">
+          <div class="input-label">
+            <span class="input-name">Hours recorded / month</span>
+            <span class="input-val" id="lbl-hours">300 h</span>
+          </div>
+          <input type="range" class="r-teal" id="sl-hours"
+            min="1" max="2400" step="1" value="300"
+            oninput="onSlider(this,'lbl-hours',v=>v+' h')">
+        </div>
+
+        <div class="input-group">
+          <div class="input-label">
+            <span class="input-name">Avg bitrate (Mbps)</span>
+            <span class="input-val" id="lbl-bitrate">3.5 Mbps</span>
+          </div>
+          <input type="range" class="r-teal" id="sl-bitrate"
+            min="0.5" max="10" step="0.5" value="3.5"
+            oninput="onSlider(this,'lbl-bitrate',v=>parseFloat(v).toFixed(1)+' Mbps')">
+        </div>
+
+        <!-- Viewership -->
+        <div class="section-label" style="margin-top:4px">Viewership</div>
+
+        <div class="input-group">
+          <div class="input-label">
+            <span class="input-name">Total monthly viewers</span>
+            <span class="input-val" id="lbl-viewers">50,000</span>
+          </div>
+          <input type="range" class="r-teal" id="sl-viewers"
+            min="100" max="500000" step="100" value="50000"
+            oninput="onSlider(this,'lbl-viewers',v=>Math.round(v).toLocaleString())">
+        </div>
+
+        <div class="input-group">
+          <div class="input-label">
+            <span class="input-name">Avg watch time / viewer</span>
+            <span class="input-val" id="lbl-watch">45 min</span>
+          </div>
+          <input type="range" class="r-teal" id="sl-watch"
+            min="5" max="480" step="5" value="45"
+            oninput="onSlider(this,'lbl-watch',v=>v<60?v+' min':(Math.floor(v/60)+'h'+(v%60?' '+v%60+'m':'')))">
+        </div>
+
+        <!-- Live / VOD split — hidden in VOD-only mode -->
+        <div id="split-section">
+          <div class="section-label" style="margin-top:4px">Viewing split</div>
+
+          <div class="input-group">
+            <div class="input-label">
+              <span class="input-name">Live viewing share</span>
+              <span class="input-val" id="lbl-split">50% live · 50% VOD</span>
+            </div>
+            <input type="range" class="r-split" id="sl-split"
+              min="0" max="100" step="5" value="50"
+              oninput="onSplitSlider(this)">
+            <div class="split-bar" style="margin-top:2px">
+              <div class="split-live" id="split-live-bar" style="background:var(--c-live);width:50%"></div>
+              <div class="split-vod"  style="background:var(--c-vod);opacity:0.5"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="right-col">
+
+      <div class="total-panel">
+        <div>
+          <div class="total-label">Estimated monthly total</div>
+          <div class="total-amount" id="total-amt">—</div>
+          <div class="total-sub" id="total-sub">—</div>
+        </div>
+        <div class="total-right">
+          <div class="cpvh-label">Cost / viewer·hour</div>
+          <div class="cpvh-val" id="cpvh">—</div>
+          <div><span class="cache-pill" id="cache-pill">—</span></div>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-lbl">Total egress</div>
+          <div class="stat-val" id="st-egress">—</div>
+          <div class="stat-unit">delivered / month</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Viewer·hours</div>
+          <div class="stat-val" id="st-vh">—</div>
+          <div class="stat-unit">total consumed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Encoding cost</div>
+          <div class="stat-val" id="st-enc">—</div>
+          <div class="stat-unit" id="st-enc-sub">MediaLive / month</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Storage cost</div>
+          <div class="stat-val" id="st-s3">—</div>
+          <div class="stat-unit">S3 / month</div>
+        </div>
+      </div>
+
+      <div class="detail-strip">
+        <div>
+          <div class="ds-lbl">Live egress</div>
+          <div class="ds-val" id="ds-live-eg">—</div>
+        </div>
+        <div>
+          <div class="ds-lbl">VOD egress</div>
+          <div class="ds-val" id="ds-vod-eg">—</div>
+        </div>
+        <div>
+          <div class="ds-lbl">Live cache hit</div>
+          <div class="ds-val" id="ds-live-cache">—</div>
+        </div>
+        <div>
+          <div class="ds-lbl">VOD cache hit</div>
+          <div class="ds-val" id="ds-vod-cache">96%</div>
+        </div>
+      </div>
+
+      <div class="breakdown-panel">
+        <div class="ph">
+          <div class="ph-dot" style="background:var(--muted2)"></div>
+          <div class="ph-title">Cost Breakdown</div>
+        </div>
+        <div id="breakdown-list"></div>
+        <div class="breakdown-footer">
+          <span class="bf-label">Total / month</span>
+          <span class="bf-total" id="footer-total">—</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Mode config ──────────────────────────────────────────────────────────────
+const MODES = {
+  live: {
+    accent:      '#e05454',
+    dotStyle:    'background:#e05454;box-shadow:0 0 7px rgba(224,84,84,0.65)',
+    liveRange:   'r-live',
+    liveCacheHit: 0.52,
+    segLabel:    'LL-HLS ~2s',
+    hasLive:     true,
+    pkgMult:     1.0,
+    desc: 'Encoder runs live · segments 2s · cache hit ~52% · stream saved to S3 for VOD replay',
+  },
+  near: {
+    accent:      '#f0a500',
+    dotStyle:    'background:#f0a500;box-shadow:0 0 7px rgba(240,165,0,0.65)',
+    liveRange:   'r-near',
+    liveCacheHit: 0.88,
+    segLabel:    'HLS 6–10s + DVR',
+    hasLive:     true,
+    pkgMult:     0.55,
+    desc: 'Encoder runs live · 5-min delay · cache hit ~88% · MediaPackage costs 3–5× lower · stream saved to S3 for VOD replay',
+  },
+  vod: {
+    accent:      '#7c6af7',
+    dotStyle:    'background:#7c6af7;box-shadow:0 0 7px rgba(124,106,247,0.65)',
+    liveRange:   'r-vod',
+    liveCacheHit: 0,
+    segLabel:    'Static MP4 / HLS',
+    hasLive:     false,
+    pkgMult:     0,
+    desc: 'Pre-recorded content only · no live encoder · all viewers hit cached S3 files · cache hit ~96%',
+  },
+};
+
+const VOD_CACHE  = 0.96;
+const CF_RATE    = 0.0085;  // $/GB us-east
+const PKG_RATE   = 0.036;   // $/GB MediaPackage out
+const S3_STORE   = 0.023;   // $/GB/month
+const SHIELD_RATE= 0.012;   // $/GB Origin Shield
+
+// Component colors
+const CC = {
+  mediaLive: '#e05454',
+  mediaPkg:  '#f0a500',
+  cfLive:    '#00d4aa',
+  cfVod:     '#7c6af7',
+  s3:        '#3ecf8e',
+  shield:    '#a78bfa',
+};
+
+let mode = 'live', theme = 'dark';
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+function applyTheme(t) {
+  theme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  const dark = t === 'dark';
+  document.getElementById('theme-icon').textContent  = dark ? '☀' : '☾';
+  document.getElementById('theme-label').textContent = dark ? 'Light' : 'Dark';
+}
+function toggleTheme() {
+  const next = theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  const u = new URL(location.href);
+  u.searchParams.set('theme', next);
+  history.replaceState(null, '', u);
+}
+
+// ─── Slider helpers ───────────────────────────────────────────────────────────
+function trackPct(el) {
+  const p = ((+el.value - +el.min) / (+el.max - +el.min) * 100).toFixed(1) + '%';
+  el.style.setProperty('--pct', p);
+}
+function onSlider(el, id, fmt) {
+  trackPct(el);
+  document.getElementById(id).textContent = fmt(+el.value);
+  update();
+}
+function onSplitSlider(el) {
+  trackPct(el);
+  const pct = +el.value;
+  el.style.setProperty('--live-pct', pct + '%');
+  document.getElementById('lbl-split').textContent =
+    pct === 0   ? '0% live · 100% VOD' :
+    pct === 100 ? '100% live · 0% VOD' :
+    pct + '% live · ' + (100 - pct) + '% VOD';
+  document.getElementById('split-live-bar').style.width = pct + '%';
+  update();
+}
+
+// ─── Vals ─────────────────────────────────────────────────────────────────────
+function vals() {
+  return {
+    hours:   +document.getElementById('sl-hours').value,
+    bitrate: +document.getElementById('sl-bitrate').value,
+    viewers: +document.getElementById('sl-viewers').value,
+    watch:   +document.getElementById('sl-watch').value / 60,   // hours
+    livePct: MODES[mode].hasLive ? +document.getElementById('sl-split').value / 100 : 0,
+  };
+}
+
+// ─── Calc ─────────────────────────────────────────────────────────────────────
+function calc(v) {
+  const p = MODES[mode];
+
+  // ── Production (always-on regardless of mode) ──
+  // MediaLive: hourly rate based on bitrate, runs for 'hours' recorded
+  const mlRate    = v.bitrate <= 2 ? 0.45 : v.bitrate <= 4 ? 0.85 : v.bitrate <= 6 ? 1.2 : 1.9;
+  const mediaLive = p.hasLive ? v.hours * mlRate : 0;
+
+  // S3 storage: raw content size stored at end of month
+  const contentGB = v.bitrate * v.hours * 3600 / 8 / 1000;
+  const s3Storage = contentGB * S3_STORE;
+
+  // ── Viewership ──
+  const totalVH   = v.viewers * v.watch;           // total viewer-hours consumed
+  const liveVH    = totalVH * v.livePct;
+  const vodVH     = totalVH * (1 - v.livePct);
+
+  // GB delivered per segment type
+  const liveGB    = liveVH * v.bitrate * 3600 / 8 / 1000;
+  const vodGB     = vodVH  * v.bitrate * 3600 / 8 / 1000;
+  const totalGB   = liveGB + vodGB;
+
+  // CloudFront egress cost
+  const cfLive    = liveGB * CF_RATE;
+  const cfVod     = vodGB  * CF_RATE;
+
+  // MediaPackage: only live viewers cause origin fetches
+  const liveOriginGB  = liveGB * (1 - p.liveCacheHit);
+  const mediaPkg      = p.hasLive ? liveOriginGB * PKG_RATE * p.pkgMult : 0;
+
+  // VOD origin fetches (S3 GETs via Origin Shield) — negligible but real
+  const vodOriginGB   = vodGB * (1 - VOD_CACHE);
+  const s3Gets        = vodOriginGB * 0.0000004;   // $0.0004 / 1k requests
+  const originShield  = vodOriginGB * SHIELD_RATE;
+
+  const total  = mediaLive + s3Storage + cfLive + cfVod + mediaPkg + s3Gets + originShield;
+  const cpvh   = totalVH > 0 ? total / totalVH : 0;
+
+  return {
+    mediaLive, mlRate,
+    s3Storage, s3Gets, contentGB,
+    cfLive, cfVod,
+    mediaPkg,
+    originShield,
+    liveGB, vodGB, totalGB,
+    liveVH, vodVH, totalVH,
+    liveOriginGB, vodOriginGB,
+    total, cpvh,
+  };
+}
+
+// ─── Format helpers ───────────────────────────────────────────────────────────
+function fm(n) {
+  if (n >= 100000) return '$' + Math.round(n/1000).toLocaleString() + 'K';
+  if (n >= 10000)  return '$' + (n/1000).toFixed(1) + 'K';
+  if (n >= 1000)   return '$' + Math.round(n).toLocaleString();
+  if (n >= 10)     return '$' + n.toFixed(0);
+  return '$' + n.toFixed(2);
+}
+function fd(gb) {
+  if (gb >= 1000) return (gb/1000).toFixed(1) + ' PB';
+  if (gb >= 1)    return gb.toFixed(1) + ' TB';
+  return Math.round(gb * 1000) + ' GB';
+}
+function fn(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return Math.round(n/1000) + 'K';
+  return Math.round(n).toLocaleString();
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function update() {
+  const v = vals(), c = calc(v), p = MODES[mode];
+
+  // Total header
+  document.getElementById('total-amt').textContent = fm(c.total);
+  document.getElementById('total-sub').textContent =
+    fd(c.totalGB) + ' egress · ' + fn(c.totalVH) + ' viewer·hours';
+
+  const cpvhEl = document.getElementById('cpvh');
+  cpvhEl.textContent = c.cpvh < 0.001
+    ? '$' + (c.cpvh*1000).toFixed(2) + '/K·h'
+    : '$' + c.cpvh.toFixed(c.cpvh < 0.01 ? 4 : 3);
+
+  const pill = document.getElementById('cache-pill');
+  const blendedHit = c.totalGB > 0
+    ? Math.round(((c.liveGB * p.liveCacheHit) + (c.vodGB * VOD_CACHE)) / c.totalGB * 100)
+    : Math.round(VOD_CACHE * 100);
+  pill.textContent      = 'blended cache ' + blendedHit + '%';
+  pill.style.background = 'rgba(0,212,170,0.15)';
+  pill.style.color      = 'var(--c-teal)';
+
+  // Stat cards
+  document.getElementById('st-egress').textContent = fd(c.totalGB);
+  document.getElementById('st-vh').textContent     = fn(c.totalVH);
+  document.getElementById('st-enc').textContent    = fm(c.mediaLive);
+  document.getElementById('st-enc-sub').textContent = p.hasLive
+    ? v.hours + 'h × $' + c.mlRate.toFixed(2) + '/h'
+    : 'no live encoder';
+  document.getElementById('st-s3').textContent     = fm(c.s3Storage);
+
+  // Detail strip
+  document.getElementById('ds-live-eg').textContent    = p.hasLive ? fd(c.liveGB) : '—';
+  document.getElementById('ds-vod-eg').textContent     = fd(c.vodGB);
+  document.getElementById('ds-live-cache').textContent = p.hasLive
+    ? Math.round(p.liveCacheHit * 100) + '%' : '—';
+
+  // Breakdown rows
+  // We group into sections: Production, Live delivery, VOD delivery
+  const liveGB = c.liveGB, vodGB = c.vodGB;
+
+  const sections = [];
+
+  // — Section: Production (always present) —
+  const prodRows = [
+    {
+      label: 'MediaLive (encoder)',
+      note:  p.hasLive ? v.hours + 'h × $' + c.mlRate.toFixed(2) + '/h (1080p H.264)' : 'not used — VOD only mode',
+      val:   c.mediaLive,
+      color: CC.mediaLive,
+    },
+    {
+      label: 'S3 storage',
+      note:  fd(c.contentGB) + ' content × $0.023/GB/mo',
+      val:   c.s3Storage,
+      color: CC.s3,
+    },
+  ];
+  sections.push({ title: 'Production — always-on', rows: prodRows });
+
+  // — Section: Live delivery (only if there's live viewing) —
+  if (p.hasLive && c.liveVH > 0) {
+    const liveRows = [
+      {
+        label: 'CloudFront egress (live)',
+        note:  fd(c.liveGB) + ' × $' + CF_RATE + '/GB',
+        val:   c.cfLive,
+        color: CC.cfLive,
+      },
+      {
+        label: 'MediaPackage origin',
+        note:  fd(c.liveOriginGB) + ' misses × $0.036/GB'
+          + (p.pkgMult < 1 ? ' (×' + p.pkgMult + ' near-rt)' : ''),
+        val:   c.mediaPkg,
+        color: CC.mediaPkg,
+      },
+    ];
+    sections.push({ title: 'Live delivery — ' + Math.round(v.livePct*100) + '% of views', rows: liveRows });
+  }
+
+  // — Section: VOD delivery (always, even in live modes) —
+  if (c.vodVH > 0 || !p.hasLive) {
+    const vodLabel = p.hasLive
+      ? 'VOD replay — ' + Math.round((1-v.livePct)*100) + '% of views'
+      : 'VOD delivery — 100% of views';
+    const vodRows = [
+      {
+        label: 'CloudFront egress (VOD)',
+        note:  fd(c.vodGB) + ' × $' + CF_RATE + '/GB',
+        val:   c.cfVod,
+        color: CC.cfVod,
+      },
+      {
+        label: 'Origin Shield',
+        note:  fd(c.vodOriginGB) + ' misses × $0.012/GB',
+        val:   c.originShield,
+        color: CC.shield,
+      },
+      {
+        label: 'S3 GETs',
+        note:  fd(c.vodOriginGB) + ' pulls × $0.0004/1K',
+        val:   c.s3Gets,
+        color: CC.s3,
+      },
+    ];
+    sections.push({ title: vodLabel, rows: vodRows });
+  }
+
+  // Flatten all rows to find max for bar scaling
+  const allRows = sections.flatMap(s => s.rows);
+  const maxVal  = Math.max(...allRows.map(r => r.val), 1);
+
+  let html = '';
+  sections.forEach(sec => {
+    html += `<div class="brow-section">${sec.title}</div>`;
+    sec.rows.forEach(r => {
+      const bw  = Math.round(r.val / maxVal * 100);
+      const pp  = c.total > 0 ? Math.round(r.val / c.total * 100) : 0;
+      const dim = r.val < 0.005;
+      html += `<div class="brow" style="${dim ? 'opacity:0.3' : ''}">
+        <div class="brow-dot" style="background:${r.color}"></div>
+        <div class="brow-name-col">
+          <span class="brow-name">${r.label}</span>
+          <div class="brow-bar-wrap">
+            <div class="brow-bar" style="width:${bw}%;background:${r.color};opacity:0.75"></div>
+          </div>
+          <span class="brow-note">${r.note}</span>
+        </div>
+        <div class="brow-amt-col">
+          <span class="brow-amt">${dim ? '—' : fm(r.val)}</span>
+          <span class="brow-pct">${dim ? '' : pp + '%'}</span>
+        </div>
+      </div>`;
+    });
+  });
+
+  document.getElementById('breakdown-list').innerHTML = html;
+  document.getElementById('footer-total').textContent = fm(c.total);
+}
+
+// ─── Mode switch ──────────────────────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  const p = MODES[m];
+
+  document.querySelectorAll('.mode-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === m));
+
+  // Flip live-range slider class (production sliders stay teal)
+  const splitEl = document.getElementById('sl-split');
+  splitEl.className = p.liveRange;
+  trackPct(splitEl);
+
+  document.getElementById('panel-dot').style.cssText = p.dotStyle;
+  document.getElementById('mode-desc').textContent   = p.desc;
+
+  // Show/hide live split in VOD mode
+  document.getElementById('split-section').style.display =
+    p.hasLive ? '' : 'none';
+
+  update();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+(function () {
+  const t = new URLSearchParams(location.search).get('theme');
+  applyTheme(t === 'light' ? 'light' : 'dark');
+
+  // Init split slider visual
+  const splitEl = document.getElementById('sl-split');
+  splitEl.style.setProperty('--live-pct', '50%');
+  trackPct(splitEl);
+
+  document.querySelectorAll('input[type=range]').forEach(trackPct);
+  setMode('live');
+})();
+</script>
+</body>
+</html>
