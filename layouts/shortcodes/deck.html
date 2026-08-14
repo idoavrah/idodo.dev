@@ -1,0 +1,94 @@
+{{/*
+  layouts/shortcodes/deck.html
+
+  Embeds a self-contained HTML deck (or any full-viewport HTML app) inside an article.
+
+  Usage in content/posts/my-article.md:
+
+      {{< deck src="/decks/spike-arrest.html" full="true" >}}
+
+  Params:
+      src    (required)  path to the deck under static/, e.g. "/decks/spike-arrest.html"
+      full   (optional)  "true" breaks out of the content column to viewport width
+      ratio  (optional)  CSS aspect-ratio for the frame; default "16/9"
+      title  (optional)  iframe title, for screen readers
+
+  The deck file goes in  static/  and is served verbatim:
+      static/decks/spike-arrest.html   →   src="/decks/spike-arrest.html"
+*/}}
+
+{{- $src   := .Get "src" -}}
+{{- $ratio := .Get "ratio" | default "16/9" -}}
+{{- $title := .Get "title" | default "Interactive deck" -}}
+{{- $full  := eq (.Get "full") "true" -}}
+
+{{- if not $src -}}
+  {{- errorf "deck shortcode: missing required 'src' parameter (%s)" .Position -}}
+{{- end -}}
+
+{{/* Go's html/template CSS-escapes a bare "16/9" to ZgotmplZ (the "/" could start a comment),
+     which silently collapses the frame to zero height. Validate the value ourselves, then
+     mark it safe so it survives into the style attribute. */}}
+{{- if not (findRE `^[0-9]+(\.[0-9]+)?\s*/\s*[0-9]+(\.[0-9]+)?$` $ratio) -}}
+  {{- errorf "deck shortcode: ratio %q must look like \"16/9\" (%s)" $ratio .Position -}}
+{{- end -}}
+{{- $ratioCSS := printf "aspect-ratio:%s" $ratio | safeCSS -}}
+
+{{/* per-page counter: gives each deck a unique id and lets us emit CSS/JS only once,
+     regardless of how many other shortcodes appear on the page */}}
+{{- $n := .Page.Scratch.Get "deckCount" | default 0 -}}
+{{- .Page.Scratch.Set "deckCount" (add $n 1) -}}
+{{- $id := printf "deck-%d" $n -}}
+
+<figure class="hugo-deck{{ if $full }} hugo-deck--full{{ end }}" id="{{ $id }}">
+  <div class="hugo-deck__frame" style="{{ $ratioCSS }}">
+    <iframe
+      src="{{ $src | relURL }}"
+      title="{{ $title }}"
+      loading="lazy"
+      allowfullscreen
+      allow="fullscreen"
+      scrolling="no"></iframe>
+  </div>
+  <figcaption class="hugo-deck__hint">
+    Click the deck, then use <kbd>←</kbd> <kbd>→</kbd> to navigate ·
+    <button type="button" class="hugo-deck__fs" data-deck="{{ $id }}">Fullscreen</button>
+  </figcaption>
+</figure>
+
+{{- if eq $n 0 }}
+<style>
+.hugo-deck{margin:2rem 0}
+.hugo-deck--full{
+  /* escape a centred content column and span the viewport */
+  width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);
+  padding:0 clamp(0px,3vw,48px);
+}
+.hugo-deck__frame{
+  position:relative;width:100%;
+  border:1px solid rgba(128,145,175,.28);border-radius:14px;overflow:hidden;
+  background:#070B16;box-shadow:0 12px 40px rgba(0,0,0,.35);
+}
+.hugo-deck__frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+.hugo-deck__hint{margin-top:.6rem;font-size:.82rem;line-height:1.5;opacity:.62;text-align:center}
+.hugo-deck__hint kbd{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78em;
+  padding:.1em .4em;border:1px solid currentColor;border-radius:4px;opacity:.85;
+}
+.hugo-deck__fs{
+  font:inherit;color:inherit;background:none;border:0;padding:0;
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer;opacity:.9;
+}
+.hugo-deck__fs:hover{opacity:1}
+@media (max-width:640px){.hugo-deck__hint{font-size:.76rem}}
+</style>
+<script>
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('.hugo-deck__fs');
+  if (!btn) return;
+  var frame = document.getElementById(btn.dataset.deck).querySelector('.hugo-deck__frame');
+  if (document.fullscreenElement) { document.exitFullscreen(); return; }
+  (frame.requestFullscreen || frame.webkitRequestFullscreen || function () {}).call(frame);
+});
+</script>
+{{- end }}
